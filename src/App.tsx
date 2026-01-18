@@ -12,6 +12,21 @@ type Trenn = {
   kas_jouksis: boolean;
 };
 
+
+type UserStats = {
+  user_id: string;
+  popim_kuupaev: string | null;
+  popimal_kuupaeval_minuteid: number | null;
+  popim_nadalapaev: string | null;
+  popimal_nadalapaeval_minuteid: number | null;
+  mitu_paeva: number | null;
+  popim_trenn: string | null;
+  mitu_paeva_jouksis: number | null;
+  updated_at: string;
+  aeg_kokku: number | null;
+};
+
+
 export default function App() {
   const [session, setSession] = useState<Awaited<ReturnType<typeof supabase.auth.getSession>>['data']['session']>(null);
   const [email, setEmail] = useState('');
@@ -26,6 +41,12 @@ export default function App() {
 
   const [rows, setRows] = useState<Trenn[]>([]);
   const [loading, setLoading] = useState(false);
+
+  
+  const [stats, setStats] = useState<UserStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsError, setStatsError] = useState<string | null>(null);
+
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -46,6 +67,33 @@ export default function App() {
     return () => { supabase.removeChannel(channel); };
   }, [session]);
 
+  
+  useEffect(() => {
+    if (!session) return;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      channel = supabase
+        .channel('stats-realtime')
+        .on('postgres_changes', {
+          event: '*',                 // INSERT/UPDATE/DELETE
+          schema: 'public',
+          table: 'trennistatistika_userid',
+          filter: `user_id=eq.${user.id}`, // ainult oma rida
+        }, (_payload) => {
+          // console.log('stats change', _payload)
+          loadStats();                // et UI uueneks
+        })
+        .subscribe();
+    })();
+
+    return () => { if (channel) supabase.removeChannel(channel); };
+  }, [session]);
+
+
   async function signUp() {
     const { error } = await supabase.auth.signUp({ email, password: pass });
     if (error) alert(error.message);
@@ -60,6 +108,40 @@ export default function App() {
   async function signOut() {
     await supabase.auth.signOut();
   }
+
+  
+async function loadStats() {
+    setStatsLoading(true);
+    setStatsError(null);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setStats(null); return; }
+
+      const { data, error } = await supabase
+        .from('trennistatistika_userid')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      if (error) {
+        // Kui kasutajal pole veel trenne, .single() võib errori visata
+        setStats(null);
+      } else {
+        setStats(data as UserStats);
+      }
+    } catch (err: any) {
+      setStatsError(err.message ?? 'Tundmatu viga');
+    } finally {
+      setStatsLoading(false);
+    }
+  }
+
+  // lae esmalt stats
+  useEffect(() => {
+    if (!session) return;
+    loadStats();
+  }, [session]);
+
 
   async function loadData() {
     setLoading(true);
@@ -87,7 +169,7 @@ export default function App() {
       });
     if (error) alert(error.message);
     else {
-      setTyyp('');
+      setTyyp("");
       setKuupaev(today);
       setKestus(30);
       setKasJouksis(false);
@@ -98,6 +180,7 @@ export default function App() {
     const { error } = await supabase.from('trenni_info').delete().eq('id', id);
     if (error) alert(error.message);
   }
+  
 
   if (!session) {
     return (
@@ -113,62 +196,92 @@ export default function App() {
     );
   }
 
-  return (
-    <div style={{ maxWidth: 720, margin: '2rem auto', fontFamily: 'system-ui, Arial' }}>
-      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-        <h1>Tehtud trennid</h1>
-        <button onClick={signOut}>Logi välja</button>
+
+  
+return (
+  <>
+    <header className="topbar">
+      <h1>Tehtud trennid</h1>
+      <button onClick={signOut}>Logi välja</button>
+    </header>
+
+    <main className="layout">
+      <div className="left">
+        <section className="card">
+          <h2>Lisa trenn</h2>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 160px 120px 120px auto', gap:8, alignItems:'center', justifyContent:'center'}}>
+            <select id="tüüp" name="tüüp" onChange={e=>setTyyp(e.target.value)}>
+              <option value="">- vali tüüp -</option>
+              <option value="Jooksmine">Jooksmine</option>
+              <option value="Kõndimine">Kõndimine</option>
+              <option value="Käepäev">Käepäev</option>
+              <option value="Jalapäev">Jalapäev</option>
+              <option value="Core">Core</option>
+            </select>
+            <input id="date" type="date" value={kuupaev} onChange={e=>setKuupaev(e.target.value)} />
+            <input id="kestus" type="number" min={0} placeholder="kestus (min)" value={kestus} onChange={e=>setKestus(Number(e.target.value))} />
+            <label style={{display:'flex', alignItems:'center', gap:6}}>
+              <input type="checkbox" checked={kasJouksis} onChange={e=>setKasJouksis(e.target.checked)} />
+              Jõuksis?
+            </label>
+            <button onClick={addRow} disabled={!tyyp}>Lisa</button>
+          </div>
+        </section>
+
+        <section className="card">
+          <h2>Minu treeningud {loading && '…'}</h2>
+          {rows.length === 0 ? (
+            <p>Hetkel kirjeid pole.</p>
+          ) : (
+            <table style={{width:'100%', borderCollapse:'collapse'}}>
+              <thead>
+                <tr>
+                  <th style={{textAlign:'left'}}>Kuupäev</th>
+                  <th style={{textAlign:'left'}}>Tüüp</th>
+                  <th style={{textAlign:'right'}}>Kestus (min)</th>
+                  <th style={{textAlign:'center'}}>Jõuksis</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(r => (
+                  <tr key={r.id}>
+                    <td style={{padding:'6px 0'}}>{r.kuupaev}</td>
+                    <td>{r.tyyp}</td>
+                    <td style={{textAlign:'right'}}>{r.kestus}</td>
+                    <td style={{textAlign:'center'}}>{r.kas_jouksis ? '✔' : ''}</td>
+                    <td style={{textAlign:'right'}}>
+                      <button onClick={() => delRow(r.id)}>Kustuta</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
       </div>
 
-      <section style={{ padding:'1rem', border:'1px solid #ddd', borderRadius:8, marginBottom:'1rem' }}>
-        <h2>Lisa trenn</h2>
-        <div style={{display:'grid', gridTemplateColumns:'1fr 160px 120px 140px auto', gap:8, alignItems:'center'}}>
-          <select name="tüüp" onChange={e=>setTyyp(e.target.value)}>
-            <option value="Jooksmine">Jooksmine</option>
-            <option value="Kõndimine">Kõndimine</option>
-            <option value="Käepäev">Käepäev</option>
-            <option value="Jalapäev">Jalapäev</option>
-            <option value="Core">Core</option>
-          </select>
-          <input type="date" value={kuupaev} onChange={e=>setKuupaev(e.target.value)} />
-          <input type="number" min={0} placeholder="kestus (min)" value={kestus} onChange={e=>setKestus(Number(e.target.value))} />
-          <label style={{display:'flex', alignItems:'center', gap:6}}>
-            <input type="checkbox" checked={kasJouksis} onChange={e=>setKasJouksis(e.target.checked)} />
-            Jõuksis?
-          </label>
-          <button onClick={addRow} disabled={!tyyp}>Lisa</button>
-        </div>
-      </section>
+      <aside className="right">
+        <section className="card">
+          <h2>Minu statistika</h2>
+          {statsLoading && <p>Laen…</p>}
+          {statsError && <p style={{color:'crimson'}}>Viga: {statsError}</p>}
+          {!statsLoading && !stats && <p>Statistikat pole veel - sisesta oma esimene trenn!</p>}
 
-      <section>
-        <h2>Minu treeningud {loading && '…'}</h2>
-        {rows.length === 0 ? <p>Hetkel kirjeid pole.</p> : (
-          <table style={{width:'100%', borderCollapse:'collapse'}}>
-            <thead>
-              <tr>
-                <th style={{textAlign:'left', borderBottom:'1px solid #ccc'}}>Kuupäev</th>
-                <th style={{textAlign:'left', borderBottom:'1px solid #ccc'}}>Tüüp</th>
-                <th style={{textAlign:'right', borderBottom:'1px solid #ccc'}}>Kestus (min)</th>
-                <th style={{textAlign:'center', borderBottom:'1px solid #ccc'}}>Jõuksis</th>
-                <th style={{borderBottom:'1px solid #ccc'}}></th>
-              </tr>
-            </thead>
-            <tbody>
-            {rows.map(r => (
-              <tr key={r.id}>
-                <td style={{padding:'6px 0'}}>{r.kuupaev}</td>
-                <td>{r.tyyp}</td>
-                <td style={{textAlign:'right'}}>{r.kestus}</td>
-                <td style={{textAlign:'center'}}>{r.kas_jouksis ? '✔' : ''}</td>
-                <td style={{textAlign:'right'}}>
-                  <button onClick={() => delRow(r.id)}>Kustuta</button>
-                </td>
-              </tr>
-            ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-    </div>
-  );
+          {stats && (
+            <ul>
+              <li><b>Kõige rohkem tegid trenni: </b> {stats.popim_kuupaev ?? '-'} ({stats.popimal_kuupaeval_minuteid ?? 0} minutit)</li>
+              <li><b>Populaarseim nädalapäev:</b> {stats.popim_nadalapaev ?? '-'} ({stats.popimal_nadalapaeval_minuteid ?? 0} min)</li>
+              <li><b>Populaarseim trennitüüp:</b> {stats.popim_trenn ?? '-'}</li>
+              <li><b>Kokku oled teinud:</b> {stats.aeg_kokku ?? '-'} tundi</li>
+              <li><b>Jõuksis käisid:</b> {stats.mitu_paeva_jouksis ?? 0} korda</li>
+              <li><b>Kokku trennipäevi:</b> {stats.mitu_paeva ?? 0}</li>
+              <li style={{color:'#666'}}>Uuendatud: {new Date(stats.updated_at).toLocaleString()}</li>
+            </ul>
+          )}
+        </section>
+      </aside>
+    </main>
+  </>
+);
 }
