@@ -4,7 +4,7 @@
   font-weight: 400;
 
   color: #000000;
-  background-color: #8eb67c;
+  background-color: #546e46;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -27,7 +27,7 @@
 .layout {
   display: grid;
   background: #da8540;
-  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); /* vasak 2x, parem 1x */
+  grid-template-columns: minmax(0, 2fr) minmax(260px, 2fr); /* vasak 2x, parem 1x */
   gap: 1rem;
   align-items: start;
   max-width: 1200px;
@@ -49,29 +49,25 @@
   border-bottom:1px solid #416541;
 }
 
-.card option {
-  background-color: #426348;
-}
-
 #date, #kestus, #tüüp{
   border:none;
   outline:none;
   display:inline-block;
-  height:34px;
+  height:28px;
   vertical-align:middle;
   text-align: left;
   position:relative;
   border-radius:22px;
   box-sizing:border-box;
-  background-color: #8eb67c;
+  background-color: #789c64;
 }
 
 #kestus {
   text-align: right;
 }
 
-/* Vasakul */
-.left .card + .card {
+/* kaartide vahel väike vahe */
+.left .card + .card, .right .card + .card  {
   margin-top: 1rem;
 }
 

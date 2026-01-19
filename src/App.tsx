@@ -24,6 +24,12 @@ type UserStats = {
   mitu_paeva_jouksis: number | null;
   updated_at: string;
   aeg_kokku: number | null;
+  aeg_jooksmisele: number | null;
+  aeg_kondimisele: number | null;
+  aeg_kaepaevale: number | null;
+  aeg_jalapaevale: number | null;
+  aeg_coreile: number | null;
+  aeg_muu_cardiole: number | null;
 };
 
 
@@ -97,7 +103,7 @@ export default function App() {
   async function signUp() {
     const { error } = await supabase.auth.signUp({ email, password: pass });
     if (error) alert(error.message);
-    else alert('Kui e-posti kinnitus on nõutud, vaata postkasti.');
+    // else alert('Kui e-posti kinnitus on nõutud, vaata postkasti.');
   }
 
   async function signIn() {
@@ -217,6 +223,7 @@ return (
               <option value="Käepäev">Käepäev</option>
               <option value="Jalapäev">Jalapäev</option>
               <option value="Core">Core</option>
+              <option value="Muu Cardio">Muu Cardio</option>
             </select>
             <input id="date" type="date" value={kuupaev} onChange={e=>setKuupaev(e.target.value)} />
             <input id="kestus" type="number" min={0} placeholder="kestus (min)" value={kestus} onChange={e=>setKestus(Number(e.target.value))} />
@@ -276,6 +283,25 @@ return (
               <li><b>Kokku oled teinud:</b> {stats.aeg_kokku ?? '-'} tundi</li>
               <li><b>Jõuksis käisid:</b> {stats.mitu_paeva_jouksis ?? 0} korda</li>
               <li><b>Kokku trennipäevi:</b> {stats.mitu_paeva ?? 0}</li>
+              <li style={{color:'#666'}}>Uuendatud: {new Date(stats.updated_at).toLocaleString()}</li>
+            </ul>
+          )}
+        </section>
+
+      <section className="card">
+          <h2>Minutid tüüpide kohta</h2>
+          {statsLoading && <p>Laen…</p>}
+          {statsError && <p style={{color:'crimson'}}>Viga: {statsError}</p>}
+          {!statsLoading && !stats && <p>Statistikat pole veel - sisesta oma esimene trenn!</p>}
+
+          {stats && (
+            <ul>
+              <li><b>Jooksid: </b> {stats.aeg_jooksmisele ?? '-'} tundi</li>
+              <li><b>Kõndisid:</b> {stats.aeg_kondimisele ?? '-'} tundi</li>
+              <li><b>Muu Cardio:</b> {stats.aeg_muu_cardiole ?? '-'} tundi</li>
+              <li><b>Käepäev:</b> {stats.aeg_kaepaevale ?? '-'} tundi</li>
+              <li><b>Jalapäev:</b> {stats.aeg_jalapaevale ?? '-'} tundi</li>
+              <li><b>Core:</b> {stats.aeg_coreile ?? '-'} tundi</li>
               <li style={{color:'#666'}}>Uuendatud: {new Date(stats.updated_at).toLocaleString()}</li>
             </ul>
           )}
